@@ -1,0 +1,21 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "tgmon"
+version = "0.1.0"
+description = "CLI tool for monitoring Telegram chats with message forwarding to aggregator"
+requires-python = ">=3.13"
+dependencies = [
+    "telethon>=1.36",
+    "typer>=0.12",
+    "aiosqlite>=0.20",
+    "pydantic>=2.9",
+]
+
+[project.scripts]
+tgmon = "tgmon.cli.main:app"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tgmon"]
