@@ -73,11 +73,11 @@ def login(
             phone = typer.prompt("Enter phone number")
             await db.update_account(name, phone=phone)
 
-            await client.send_code(phone)
+            phone_code_hash = await client.send_code(phone)
             code = typer.prompt("Enter the code you received")
 
             try:
-                await client.sign_in(phone, code)
+                await client.sign_in(phone, code, phone_code_hash)
             except Exception as e:
                 if "password" in str(e).lower() or "2fa" in str(e).lower():
                     password = typer.prompt("Enter 2FA password", hide_input=True)
@@ -212,8 +212,7 @@ def dialogs(
             else:
                 typer.echo("Groups and channels:")
 
-            typer.echo(f"{'ID':<20} {'Type':<10} Name")
-            typer.echo("-" * 60)
+            typer.echo("")
 
             count = 0
             async for dialog in client.iter_dialogs():
@@ -236,7 +235,7 @@ def dialogs(
                 else:
                     chat_type = "other"
 
-                typer.echo(f"{chat_id:<20} {chat_type:<10} {title}")
+                typer.echo(f"[{chat_type}] {title} ({chat_id})")
 
                 count += 1
                 if count >= limit:

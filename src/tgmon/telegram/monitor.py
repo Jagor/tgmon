@@ -40,7 +40,8 @@ class Monitor:
         self._running = False
         self._watch_chat_ids: set[int] = set()
         self._agg_entity = None
-        self._resolved_chat_ids: dict[int, int] = {}  # watch.id -> chat_id
+        self._resolved_chats: dict[int, tuple[int, str]] = {}  # watch.id -> (chat_id, chat_title)
+        self._resolved_aggregator: tuple[int, str] | None = None  # (chat_id, chat_title)
         self._me = None  # Current user info
         self._my_user_id: int | None = None
         self._my_username: str | None = None
@@ -61,19 +62,24 @@ class Monitor:
 
         # Resolve aggregator entity
         self._agg_entity = await self.agg_client.get_entity(self.aggregator.chat_ref)
+        agg_chat_id = self._agg_entity.id
+        agg_chat_title = self.formatter.get_chat_name(self._agg_entity)
+        if self.aggregator.chat_id != agg_chat_id or self.aggregator.chat_title != agg_chat_title:
+            self._resolved_aggregator = (agg_chat_id, agg_chat_title)
 
         # Resolve and cache watched chat IDs
         for watch in self.watches:
             try:
                 entity = await self.client.get_entity(watch.chat_ref)
                 chat_id = entity.id
+                chat_title = self.formatter.get_chat_name(entity)
                 self._watch_chat_ids.add(chat_id)
 
-                # Store resolved chat_id for later db update
-                if watch.chat_id != chat_id:
-                    self._resolved_chat_ids[watch.id] = chat_id
+                # Store resolved chat info for later db update
+                if watch.chat_id != chat_id or watch.chat_title != chat_title:
+                    self._resolved_chats[watch.id] = (chat_id, chat_title)
 
-                print(f"  Watching: {watch.chat_ref} (ID: {chat_id})")
+                print(f"  Watching: {chat_title} (ID: {chat_id})")
             except Exception as e:
                 print(f"  Failed to resolve {watch.chat_ref}: {e}")
 
@@ -89,9 +95,13 @@ class Monitor:
         self._running = True
         print(f"Monitor started for '{self.account.name}'")
 
-    def get_resolved_chat_ids(self) -> dict[int, int]:
-        """Get dict of watch_id -> resolved chat_id for db update."""
-        return self._resolved_chat_ids
+    def get_resolved_chats(self) -> dict[int, tuple[int, str]]:
+        """Get dict of watch_id -> (chat_id, chat_title) for db update."""
+        return self._resolved_chats
+
+    def get_resolved_aggregator(self) -> tuple[int, str] | None:
+        """Get resolved aggregator (chat_id, chat_title) if changed."""
+        return self._resolved_aggregator
 
     async def stop(self) -> None:
         """Stop monitoring."""

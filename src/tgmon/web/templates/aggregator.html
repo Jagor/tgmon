@@ -1,0 +1,240 @@
+{% extends "base.html" %}
+
+{% block title %}Aggregator - tgmon{% endblock %}
+
+{% block content %}
+<h1>Aggregator</h1>
+
+<div class="card">
+    {% if accounts %}
+        {% if aggregator %}
+        <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 15px; flex-wrap: wrap;">
+            <span style="color: var(--text-muted);">Current:</span>
+            <strong>{{ aggregator.chat_title or aggregator.chat_ref }}</strong>
+            <span style="color: var(--text-muted);">via {{ aggregator.account_name }}</span>
+            <form action="{{ url_for('aggregator.remove_aggregator') }}" method="POST" class="inline-form" style="margin: 0;" onsubmit="return confirm('Remove aggregator?');">
+                <button type="submit" class="btn btn-danger btn-sm">Remove</button>
+            </form>
+        </div>
+        <hr style="margin: 0 0 15px 0; border-color: var(--border-color);">
+        {% endif %}
+
+        <form method="POST" action="{{ url_for('aggregator.set_aggregator') }}" id="aggregator-form">
+            <input type="hidden" id="chat_ref" name="chat_ref" value="{{ aggregator.chat_ref if aggregator else '' }}">
+
+            <div style="display: flex; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; align-items: end;">
+                <div style="min-width: 150px;">
+                    <label for="account" style="margin-bottom: 4px; display: block; font-size: 13px;">Account</label>
+                    <select id="account" name="account" required style="margin: 0;">
+                        <option value="">Select</option>
+                        {% for account in accounts %}
+                            <option value="{{ account.name }}" {% if aggregator and aggregator.account_name == account.name %}selected{% endif %}>
+                                {{ account.name }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div style="flex: 1; min-width: 200px;">
+                    <label for="search-input" style="margin-bottom: 4px; display: block; font-size: 13px;">Search</label>
+                    <input type="text" id="search-input" placeholder="Name or ID..." style="margin: 0; width: 100%;">
+                </div>
+                <button type="button" class="btn btn-primary" onclick="loadDialogs()">Load</button>
+            </div>
+
+            <div id="selected-chat" style="display: {% if aggregator %}flex{% else %}none{% endif %}; margin-bottom: 10px; align-items: center; gap: 8px;">
+                <span style="color: var(--text-muted); font-size: 13px;">Selected:</span>
+                <span class="badge badge-success" id="selected-chat-name">{% if aggregator %}{{ aggregator.chat_title or aggregator.chat_ref }}{% endif %}</span>
+                <button type="button" class="btn btn-sm btn-danger" onclick="clearSelection()" style="padding: 2px 8px;">×</button>
+                <button type="submit" class="btn btn-success btn-sm" id="submit-btn" {% if not aggregator %}disabled{% endif %}>Save</button>
+            </div>
+
+            <div id="dialogs-list" style="max-height: 400px; overflow-y: auto;"></div>
+
+            <div id="pagination" style="display: none; margin-top: 10px;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span id="page-info" style="color: var(--text-muted); font-size: 13px;"></span>
+                    <div style="display: flex; gap: 5px;">
+                        <button type="button" class="btn btn-primary btn-sm" id="prev-btn" onclick="loadPage(-1)">←</button>
+                        <button type="button" class="btn btn-primary btn-sm" id="next-btn" onclick="loadPage(1)">→</button>
+                    </div>
+                </div>
+            </div>
+        </form>
+
+        <script>
+            let currentOffset = 0;
+            let currentTotal = 0;
+            const pageSize = 50;
+            let searchTimeout = null;
+            let selectedChatId = '{{ aggregator.chat_ref if aggregator else "" }}';
+
+            function escapeHtml(text) {
+                const div = document.createElement('div');
+                div.textContent = text;
+                return div.innerHTML;
+            }
+
+            function updateSelectedDisplay(id, title) {
+                const wrapper = document.getElementById('selected-chat');
+                const nameEl = document.getElementById('selected-chat-name');
+                const input = document.getElementById('chat_ref');
+                const submitBtn = document.getElementById('submit-btn');
+
+                if (id) {
+                    selectedChatId = String(id);
+                    input.value = selectedChatId;
+                    nameEl.textContent = title || id;
+                    wrapper.style.display = 'flex';
+                    submitBtn.disabled = false;
+                } else {
+                    selectedChatId = '';
+                    input.value = '';
+                    wrapper.style.display = 'none';
+                    submitBtn.disabled = true;
+                }
+            }
+
+            function clearSelection() {
+                updateSelectedDisplay('', '');
+                updateDialogRows();
+            }
+
+            function selectChat(id, title) {
+                updateSelectedDisplay(id, title);
+                updateDialogRows();
+            }
+
+            function updateDialogRows() {
+                document.querySelectorAll('tr[data-dialog-id]').forEach(row => {
+                    const id = row.dataset.dialogId;
+                    const isSelected = id === selectedChatId;
+                    const btn = row.querySelector('.dialog-select-btn');
+
+                    if (isSelected) {
+                        row.style.background = 'rgba(78, 204, 163, 0.2)';
+                        if (btn) {
+                            btn.textContent = 'Selected';
+                            btn.className = 'btn btn-sm btn-success dialog-select-btn';
+                        }
+                    } else {
+                        row.style.background = '';
+                        if (btn) {
+                            btn.textContent = 'Select';
+                            btn.className = 'btn btn-sm btn-primary dialog-select-btn';
+                        }
+                    }
+                });
+            }
+
+            async function loadDialogs(offset = 0) {
+                const account = document.getElementById('account').value;
+                if (!account) {
+                    alert('Select an account first');
+                    return;
+                }
+
+                currentOffset = offset;
+
+                const search = document.getElementById('search-input').value.trim();
+                const list = document.getElementById('dialogs-list');
+                list.innerHTML = '<p>Loading...</p>';
+
+                try {
+                    const params = new URLSearchParams({
+                        users: '0',
+                        offset: offset,
+                        limit: pageSize,
+                        search: search
+                    });
+
+                    const response = await fetch(`/accounts/${account}/dialogs?${params}`);
+                    const data = await response.json();
+
+                    if (data.error) {
+                        list.innerHTML = `<p style="color: var(--accent);">${data.error}</p>`;
+                        document.getElementById('pagination').style.display = 'none';
+                        return;
+                    }
+
+                    currentTotal = data.total;
+
+                    if (data.dialogs.length === 0) {
+                        list.innerHTML = '<p>No groups or channels found.</p>';
+                        document.getElementById('pagination').style.display = 'none';
+                        return;
+                    }
+
+                    let html = '<table><thead><tr><th>Type</th><th>Title</th><th>ID</th><th></th></tr></thead><tbody>';
+                    for (const dialog of data.dialogs) {
+                        const id = String(dialog.id);
+                        const title = escapeHtml(dialog.title);
+                        const isSelected = id === selectedChatId;
+
+                        html += `<tr data-dialog-id="${id}" style="${isSelected ? 'background: rgba(78, 204, 163, 0.2);' : ''}">
+                            <td><span class="badge badge-${dialog.type === 'channel' ? 'success' : 'warning'}">${dialog.type}</span></td>
+                            <td>${title}</td>
+                            <td>${dialog.id}</td>
+                            <td>
+                                <button type="button"
+                                        class="btn btn-sm ${isSelected ? 'btn-success' : 'btn-primary'} dialog-select-btn"
+                                        onclick="selectChat('${id}', '${title.replace(/'/g, "\\'")}')">
+                                    ${isSelected ? 'Selected' : 'Select'}
+                                </button>
+                            </td>
+                        </tr>`;
+                    }
+                    html += '</tbody></table>';
+                    list.innerHTML = html;
+
+                    // Update pagination
+                    const pagination = document.getElementById('pagination');
+                    const pageInfo = document.getElementById('page-info');
+                    const prevBtn = document.getElementById('prev-btn');
+                    const nextBtn = document.getElementById('next-btn');
+
+                    if (currentTotal > pageSize) {
+                        pagination.style.display = 'block';
+                        const start = offset + 1;
+                        const end = Math.min(offset + data.dialogs.length, currentTotal);
+                        pageInfo.textContent = `Showing ${start}-${end} of ${currentTotal}`;
+                        prevBtn.disabled = offset === 0;
+                        nextBtn.disabled = offset + pageSize >= currentTotal;
+                    } else {
+                        pagination.style.display = 'none';
+                    }
+
+                } catch (e) {
+                    list.innerHTML = `<p style="color: var(--accent);">Error: ${e.message}</p>`;
+                }
+            }
+
+            function loadPage(direction) {
+                const newOffset = currentOffset + (direction * pageSize);
+                if (newOffset >= 0 && newOffset < currentTotal) {
+                    loadDialogs(newOffset);
+                }
+            }
+
+            // Search with debounce
+            document.getElementById('search-input').addEventListener('input', function() {
+                clearTimeout(searchTimeout);
+                searchTimeout = setTimeout(() => {
+                    if (document.getElementById('account').value) {
+                        loadDialogs(0);
+                    }
+                }, 300);
+            });
+
+            // Form validation
+            document.getElementById('aggregator-form').addEventListener('submit', function(e) {
+                if (!document.getElementById('chat_ref').value) {
+                    e.preventDefault();
+                    alert('Please select a chat');
+                }
+            });
+        </script>
+    {% else %}
+        <p style="color: var(--text-muted);">No accounts configured. <a href="{{ url_for('accounts.add_account') }}">Add an account</a> first.</p>
+    {% endif %}
+</div>
+{% endblock %}

@@ -90,10 +90,13 @@ def run_account(
 
         try:
             await monitor.start()
-            # Update resolved chat_ids in database (brief connection)
+            # Update resolved chat info in database (brief connection)
             async with Database(config.db_path) as db:
-                for watch_id, chat_id in monitor.get_resolved_chat_ids().items():
-                    await db.update_watch(watch_id, chat_id=chat_id)
+                for watch_id, (chat_id, chat_title) in monitor.get_resolved_chats().items():
+                    await db.update_watch(watch_id, chat_id=chat_id, chat_title=chat_title)
+                agg_resolved = monitor.get_resolved_aggregator()
+                if agg_resolved:
+                    await db.update_aggregator(chat_id=agg_resolved[0], chat_title=agg_resolved[1])
             await stop_event.wait()
         except KeyboardInterrupt:
             pass
@@ -181,11 +184,17 @@ def run_all() -> None:
 
         try:
             await asyncio.gather(*[m.start() for m in monitors])
-            # Update resolved chat_ids in database (brief connection)
+            # Update resolved chat info in database (brief connection)
             async with Database(config.db_path) as db:
+                agg_updated = False
                 for monitor in monitors:
-                    for watch_id, chat_id in monitor.get_resolved_chat_ids().items():
-                        await db.update_watch(watch_id, chat_id=chat_id)
+                    for watch_id, (chat_id, chat_title) in monitor.get_resolved_chats().items():
+                        await db.update_watch(watch_id, chat_id=chat_id, chat_title=chat_title)
+                    if not agg_updated:
+                        agg_resolved = monitor.get_resolved_aggregator()
+                        if agg_resolved:
+                            await db.update_aggregator(chat_id=agg_resolved[0], chat_title=agg_resolved[1])
+                            agg_updated = True
             await stop_event.wait()
         except KeyboardInterrupt:
             pass

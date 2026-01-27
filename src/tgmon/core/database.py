@@ -22,6 +22,8 @@ CREATE TABLE IF NOT EXISTS aggregator (
     id INTEGER PRIMARY KEY CHECK (id = 1),
     chat_ref TEXT NOT NULL,
     account_name TEXT NOT NULL,
+    chat_id INTEGER,
+    chat_title TEXT,
     FOREIGN KEY (account_name) REFERENCES accounts(name)
 );
 
@@ -31,6 +33,7 @@ CREATE TABLE IF NOT EXISTS watches (
     account_name TEXT NOT NULL,
     chat_ref TEXT NOT NULL,
     chat_id INTEGER,
+    chat_title TEXT,
     enabled INTEGER DEFAULT 1,
     FOREIGN KEY (account_name) REFERENCES accounts(name),
     UNIQUE(account_name, chat_ref)
@@ -52,6 +55,8 @@ class Database:
         # Enable WAL mode for better concurrency
         await self._conn.execute("PRAGMA journal_mode=WAL")
         await self._conn.execute("PRAGMA busy_timeout=30000")
+        # Run migrations on connect
+        await self._migrate()
 
     async def close(self) -> None:
         """Close database connection."""
@@ -71,6 +76,29 @@ class Database:
         if not self._conn:
             raise RuntimeError("Database not connected")
         await self._conn.executescript(SCHEMA)
+        await self._conn.commit()
+        # Run migrations
+        await self._migrate()
+
+    async def _migrate(self) -> None:
+        """Run database migrations."""
+        if not self._conn:
+            return
+
+        # Add chat_title column to watches if it doesn't exist
+        cursor = await self._conn.execute("PRAGMA table_info(watches)")
+        columns = [row[1] for row in await cursor.fetchall()]
+        if "chat_title" not in columns:
+            await self._conn.execute("ALTER TABLE watches ADD COLUMN chat_title TEXT")
+
+        # Add chat_id and chat_title columns to aggregator if they don't exist
+        cursor = await self._conn.execute("PRAGMA table_info(aggregator)")
+        columns = [row[1] for row in await cursor.fetchall()]
+        if "chat_id" not in columns:
+            await self._conn.execute("ALTER TABLE aggregator ADD COLUMN chat_id INTEGER")
+        if "chat_title" not in columns:
+            await self._conn.execute("ALTER TABLE aggregator ADD COLUMN chat_title TEXT")
+
         await self._conn.commit()
 
     # Account operations
@@ -162,9 +190,23 @@ class Database:
         if not self._conn:
             raise RuntimeError("Database not connected")
         await self._conn.execute(
-            """INSERT OR REPLACE INTO aggregator (id, chat_ref, account_name)
-               VALUES (1, ?, ?)""",
-            (aggregator.chat_ref, aggregator.account_name),
+            """INSERT OR REPLACE INTO aggregator (id, chat_ref, account_name, chat_id, chat_title)
+               VALUES (1, ?, ?, ?, ?)""",
+            (aggregator.chat_ref, aggregator.account_name, aggregator.chat_id, aggregator.chat_title),
+        )
+        await self._conn.commit()
+
+    async def update_aggregator(self, **kwargs) -> None:
+        """Update aggregator fields."""
+        if not self._conn:
+            raise RuntimeError("Database not connected")
+        if not kwargs:
+            return
+
+        fields = ", ".join(f"{k} = ?" for k in kwargs)
+        values = list(kwargs.values())
+        await self._conn.execute(
+            f"UPDATE aggregator SET {fields} WHERE id = 1", values
         )
         await self._conn.commit()
 
@@ -178,8 +220,17 @@ class Database:
             return Aggregator(
                 chat_ref=row["chat_ref"],
                 account_name=row["account_name"],
+                chat_id=row["chat_id"],
+                chat_title=row["chat_title"],
             )
         return None
+
+    async def remove_aggregator(self) -> None:
+        """Remove aggregator configuration."""
+        if not self._conn:
+            raise RuntimeError("Database not connected")
+        await self._conn.execute("DELETE FROM aggregator WHERE id = 1")
+        await self._conn.commit()
 
     # Watch operations
     async def add_watch(self, watch: Watch) -> int:
@@ -187,12 +238,13 @@ class Database:
         if not self._conn:
             raise RuntimeError("Database not connected")
         cursor = await self._conn.execute(
-            """INSERT INTO watches (account_name, chat_ref, chat_id, enabled)
-               VALUES (?, ?, ?, ?)""",
+            """INSERT INTO watches (account_name, chat_ref, chat_id, chat_title, enabled)
+               VALUES (?, ?, ?, ?, ?)""",
             (
                 watch.account_name,
                 watch.chat_ref,
                 watch.chat_id,
+                watch.chat_title,
                 1 if watch.enabled else 0,
             ),
         )
@@ -213,6 +265,7 @@ class Database:
                 account_name=row["account_name"],
                 chat_ref=row["chat_ref"],
                 chat_id=row["chat_id"],
+                chat_title=row["chat_title"],
                 enabled=bool(row["enabled"]),
             )
         return None
@@ -231,6 +284,7 @@ class Database:
                 account_name=row["account_name"],
                 chat_ref=row["chat_ref"],
                 chat_id=row["chat_id"],
+                chat_title=row["chat_title"],
                 enabled=bool(row["enabled"]),
             )
             for row in rows
@@ -251,6 +305,7 @@ class Database:
                 account_name=row["account_name"],
                 chat_ref=row["chat_ref"],
                 chat_id=row["chat_id"],
+                chat_title=row["chat_title"],
                 enabled=bool(row["enabled"]),
             )
             for row in rows
@@ -295,6 +350,7 @@ class Database:
                 account_name=row["account_name"],
                 chat_ref=row["chat_ref"],
                 chat_id=row["chat_id"],
+                chat_title=row["chat_title"],
                 enabled=bool(row["enabled"]),
             )
         return None

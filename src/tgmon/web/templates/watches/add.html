@@ -1,0 +1,267 @@
+{% extends "base.html" %}
+
+{% block title %}Add Watch - tgmon{% endblock %}
+
+{% block content %}
+<h1>Add Watch</h1>
+
+<div class="card">
+    {% if accounts %}
+        <form method="POST" id="add-form">
+            <input type="hidden" name="chat_refs" id="chat_refs_input">
+
+            <div style="display: flex; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; align-items: end;">
+                <div style="min-width: 150px;">
+                    <label for="account" style="margin-bottom: 4px; display: block; font-size: 13px;">Account</label>
+                    <select id="account" name="account" required style="margin: 0;">
+                        <option value="">Select</option>
+                        {% for account in accounts %}
+                            <option value="{{ account.name }}">{{ account.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div style="flex: 1; min-width: 200px;">
+                    <label for="search-input" style="margin-bottom: 4px; display: block; font-size: 13px;">Search</label>
+                    <input type="text" id="search-input" placeholder="Name or ID..." style="margin: 0; width: 100%;">
+                </div>
+                <button type="button" class="btn btn-primary" onclick="loadDialogs(false)">Groups</button>
+                <button type="button" class="btn btn-primary" onclick="loadDialogs(true)">Users</button>
+            </div>
+
+            <div style="display: flex; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; align-items: center;">
+                <div style="flex: 1; min-width: 150px;">
+                    <label for="chat_ref" style="margin-bottom: 4px; display: block; font-size: 13px;">Manual input</label>
+                    <input type="text" id="chat_ref" name="chat_ref" placeholder="@username or ID" style="margin: 0; width: 100%;">
+                </div>
+                <div id="selected-chats" style="display: none; flex: 2; min-width: 200px;">
+                    <label style="margin-bottom: 4px; display: block; font-size: 13px;">Selected (<span id="selected-count">0</span>)</label>
+                    <div id="selected-list" style="display: flex; flex-wrap: wrap; gap: 4px; max-height: 60px; overflow-y: auto;"></div>
+                </div>
+                <button type="submit" class="btn btn-success">Add</button>
+                <a href="{{ url_for('watches.list_watches') }}" class="btn btn-primary">Cancel</a>
+            </div>
+
+            <div id="dialogs-list" style="max-height: 400px; overflow-y: auto;"></div>
+
+            <div id="pagination" style="display: none; margin-top: 10px;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span id="page-info" style="color: var(--text-muted); font-size: 13px;"></span>
+                    <div style="display: flex; gap: 5px;">
+                        <button type="button" class="btn btn-primary btn-sm" id="prev-btn" onclick="loadPage(-1)">←</button>
+                        <button type="button" class="btn btn-primary btn-sm" id="next-btn" onclick="loadPage(1)">→</button>
+                    </div>
+                </div>
+            </div>
+        </form>
+
+        <script>
+            const selectedChats = new Map();
+            let currentOffset = 0;
+            let currentTotal = 0;
+            let currentShowUsers = false;
+            const pageSize = 50;
+            let searchTimeout = null;
+
+            function updateSelectedDisplay() {
+                const container = document.getElementById('selected-list');
+                const wrapper = document.getElementById('selected-chats');
+                const input = document.getElementById('chat_refs_input');
+                const countSpan = document.getElementById('selected-count');
+
+                countSpan.textContent = selectedChats.size;
+
+                if (selectedChats.size === 0) {
+                    wrapper.style.display = 'none';
+                    input.value = '';
+                    return;
+                }
+
+                wrapper.style.display = 'block';
+                container.innerHTML = '';
+
+                for (const [id, chat] of selectedChats) {
+                    const chip = document.createElement('span');
+                    chip.className = 'badge badge-success';
+                    chip.style.cssText = 'padding: 4px 8px; display: inline-flex; align-items: center; gap: 4px; font-size: 12px;';
+                    chip.innerHTML = `${escapeHtml(chat.title)} <span style="cursor: pointer; font-weight: bold;" onclick="removeChat('${id}')">&times;</span>`;
+                    container.appendChild(chip);
+                }
+
+                input.value = JSON.stringify(Array.from(selectedChats.keys()));
+            }
+
+            function escapeHtml(text) {
+                const div = document.createElement('div');
+                div.textContent = text;
+                return div.innerHTML;
+            }
+
+            function toggleChat(id, title, type) {
+                id = String(id);
+                if (selectedChats.has(id)) {
+                    selectedChats.delete(id);
+                } else {
+                    selectedChats.set(id, {id, title, type});
+                }
+                updateSelectedDisplay();
+                updateDialogRows();
+            }
+
+            function removeChat(id) {
+                selectedChats.delete(String(id));
+                updateSelectedDisplay();
+                updateDialogRows();
+            }
+
+            function updateDialogRows() {
+                document.querySelectorAll('tr[data-dialog-id]').forEach(row => {
+                    const id = row.dataset.dialogId;
+                    const isSelected = selectedChats.has(id);
+                    const checkbox = row.querySelector('input[type="checkbox"]');
+                    const btn = row.querySelector('.dialog-select-btn');
+
+                    if (checkbox) checkbox.checked = isSelected;
+                    if (btn) {
+                        if (row.dataset.added === 'true') {
+                            btn.textContent = 'Added';
+                            btn.className = 'btn btn-sm btn-warning dialog-select-btn';
+                            btn.disabled = true;
+                        } else if (isSelected) {
+                            btn.textContent = '−';
+                            btn.className = 'btn btn-sm btn-danger dialog-select-btn';
+                            btn.disabled = false;
+                        } else {
+                            btn.textContent = '+';
+                            btn.className = 'btn btn-sm btn-primary dialog-select-btn';
+                            btn.disabled = false;
+                        }
+                    }
+                });
+            }
+
+            async function loadDialogs(showUsers, offset = 0) {
+                const account = document.getElementById('account').value;
+                if (!account) {
+                    alert('Select an account first');
+                    return;
+                }
+
+                currentShowUsers = showUsers;
+                currentOffset = offset;
+
+                const search = document.getElementById('search-input').value.trim();
+                const list = document.getElementById('dialogs-list');
+                list.innerHTML = '<p>Loading...</p>';
+
+                try {
+                    const params = new URLSearchParams({
+                        users: showUsers ? '1' : '0',
+                        offset: offset,
+                        limit: pageSize,
+                        search: search
+                    });
+
+                    const response = await fetch(`/accounts/${account}/dialogs?${params}`);
+                    const data = await response.json();
+
+                    if (data.error) {
+                        list.innerHTML = `<p style="color: var(--accent);">${data.error}</p>`;
+                        document.getElementById('pagination').style.display = 'none';
+                        return;
+                    }
+
+                    currentTotal = data.total;
+
+                    if (data.dialogs.length === 0) {
+                        list.innerHTML = '<p>No dialogs found.</p>';
+                        document.getElementById('pagination').style.display = 'none';
+                        return;
+                    }
+
+                    let html = '<table><thead><tr><th style="width:30px;"></th><th>Type</th><th>Title</th><th>ID</th><th style="width:50px;"></th></tr></thead><tbody>';
+                    for (const dialog of data.dialogs) {
+                        const id = String(dialog.id);
+                        const isSelected = selectedChats.has(id);
+                        const isAdded = dialog.added;
+
+                        let btnClass, btnText, btnDisabled;
+                        if (isAdded) {
+                            btnClass = 'btn-warning';
+                            btnText = '✓';
+                            btnDisabled = 'disabled';
+                        } else if (isSelected) {
+                            btnClass = 'btn-danger';
+                            btnText = '−';
+                            btnDisabled = '';
+                        } else {
+                            btnClass = 'btn-primary';
+                            btnText = '+';
+                            btnDisabled = '';
+                        }
+
+                        const rowStyle = isAdded ? 'opacity: 0.6;' : '';
+                        const title = escapeHtml(dialog.title);
+
+                        html += `<tr data-dialog-id="${id}" data-added="${isAdded}" style="${rowStyle}">
+                            <td><input type="checkbox" ${isSelected ? 'checked' : ''} ${isAdded ? 'disabled' : ''} onchange="toggleChat('${id}', '${title.replace(/'/g, "\\'")}', '${dialog.type}')"></td>
+                            <td><span class="badge badge-${dialog.type === 'channel' ? 'success' : 'warning'}">${dialog.type}</span></td>
+                            <td>${title}${isAdded ? ' <small style="color: var(--warning);">(added)</small>' : ''}</td>
+                            <td style="font-size: 12px;">${dialog.id}</td>
+                            <td><button type="button" class="btn btn-sm ${btnClass} dialog-select-btn" ${btnDisabled} onclick="toggleChat('${id}', '${title.replace(/'/g, "\\'")}', '${dialog.type}')">${btnText}</button></td>
+                        </tr>`;
+                    }
+                    html += '</tbody></table>';
+                    list.innerHTML = html;
+
+                    const pagination = document.getElementById('pagination');
+                    const pageInfo = document.getElementById('page-info');
+                    const prevBtn = document.getElementById('prev-btn');
+                    const nextBtn = document.getElementById('next-btn');
+
+                    if (currentTotal > pageSize) {
+                        pagination.style.display = 'block';
+                        const start = offset + 1;
+                        const end = Math.min(offset + data.dialogs.length, currentTotal);
+                        pageInfo.textContent = `${start}-${end} of ${currentTotal}`;
+                        prevBtn.disabled = offset === 0;
+                        nextBtn.disabled = offset + pageSize >= currentTotal;
+                    } else {
+                        pagination.style.display = 'none';
+                    }
+
+                } catch (e) {
+                    list.innerHTML = `<p style="color: var(--accent);">Error: ${e.message}</p>`;
+                }
+            }
+
+            function loadPage(direction) {
+                const newOffset = currentOffset + (direction * pageSize);
+                if (newOffset >= 0 && newOffset < currentTotal) {
+                    loadDialogs(currentShowUsers, newOffset);
+                }
+            }
+
+            document.getElementById('search-input').addEventListener('input', function() {
+                clearTimeout(searchTimeout);
+                searchTimeout = setTimeout(() => {
+                    if (document.getElementById('account').value) {
+                        loadDialogs(currentShowUsers, 0);
+                    }
+                }, 300);
+            });
+
+            document.getElementById('add-form').addEventListener('submit', function(e) {
+                const chatRef = document.getElementById('chat_ref').value.trim();
+                const chatRefs = document.getElementById('chat_refs_input').value;
+
+                if (!chatRef && (!chatRefs || chatRefs === '[]')) {
+                    e.preventDefault();
+                    alert('Enter a chat reference or select chats from the list');
+                }
+            });
+        </script>
+    {% else %}
+        <p style="color: var(--text-muted);">No accounts configured. <a href="{{ url_for('accounts.add_account') }}">Add an account</a> first.</p>
+    {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+
+{% block title %}Add Account - tgmon{% endblock %}
+
+{% block content %}
+<h1>Add Account</h1>
+
+<div class="card">
+    <form method="POST">
+        <div class="form-group">
+            <label for="name">Account Name</label>
+            <input type="text" id="name" name="name" required placeholder="e.g., main, work">
+        </div>
+
+        <div class="form-group">
+            <label for="api_id">API ID</label>
+            <input type="number" id="api_id" name="api_id" required placeholder="Your Telegram API ID">
+            <small style="color: var(--text-muted);">Get from <a href="https://my.telegram.org" target="_blank" style="color: var(--accent);">my.telegram.org</a></small>
+        </div>
+
+        <div class="form-group">
+            <label for="api_hash">API Hash</label>
+            <input type="text" id="api_hash" name="api_hash" required placeholder="Your Telegram API Hash">
+        </div>
+
+        <div style="display: flex; gap: 10px;">
+            <button type="submit" class="btn btn-success">Add Account</button>
+            <a href="{{ url_for('accounts.list_accounts') }}" class="btn btn-primary">Cancel</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

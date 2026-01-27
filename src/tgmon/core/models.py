@@ -19,6 +19,8 @@ class Aggregator(BaseModel):
 
     chat_ref: str
     account_name: str
+    chat_id: int | None = None
+    chat_title: str | None = None
 
 
 class Watch(BaseModel):
@@ -28,4 +30,5 @@ class Watch(BaseModel):
     account_name: str
     chat_ref: str
     chat_id: int | None = None
+    chat_title: str | None = None
     enabled: bool = True

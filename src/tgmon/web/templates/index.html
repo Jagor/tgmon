@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+
+{% block title %}tgmon - Dashboard{% endblock %}
+
+{% block content %}
+<h1>Dashboard</h1>
+
+{% if not initialized %}
+<div class="card">
+    <h2>Setup Required</h2>
+    <p style="color: var(--warning);">tgmon is not initialized.</p>
+    <p style="margin: 15px 0;">Click the button below to initialize tgmon, or run <code style="background: var(--bg-color); padding: 2px 6px; border-radius: 4px;">tgmon init</code> in your terminal.</p>
+    <form action="{{ url_for('init') }}" method="POST">
+        <button type="submit" class="btn btn-success">Initialize tgmon</button>
+    </form>
+</div>
+{% else %}
+
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; margin-bottom: 20px;">
+    <div class="card" style="text-align: center;">
+        <div style="font-size: 3em; font-weight: bold; color: var(--accent);">{{ accounts_count }}</div>
+        <div style="color: var(--text-muted); margin-bottom: 15px;">Accounts</div>
+        <a href="{{ url_for('accounts.list_accounts') }}" class="btn btn-primary btn-sm">Manage</a>
+    </div>
+
+    <div class="card" style="text-align: center;">
+        <div style="font-size: 3em; font-weight: bold; color: var(--accent);">{{ watches_count }}</div>
+        <div style="color: var(--text-muted); margin-bottom: 15px;">Watches</div>
+        <a href="{{ url_for('watches.list_watches') }}" class="btn btn-primary btn-sm">Manage</a>
+    </div>
+
+    <div class="card" style="text-align: center;">
+        {% if aggregator %}
+            <div style="font-size: 1.2em; font-weight: bold; color: var(--success); word-break: break-all;">
+                {% if aggregator.chat_title %}{{ aggregator.chat_title }}{% else %}{{ aggregator.chat_ref }}{% endif %}
+            </div>
+            <div style="color: var(--text-muted); margin-bottom: 15px;">via {{ aggregator.account_name }}</div>
+        {% else %}
+            <div style="font-size: 1.5em; font-weight: bold; color: var(--warning);">Not Set</div>
+            <div style="color: var(--text-muted); margin-bottom: 15px;">Aggregator</div>
+        {% endif %}
+        <a href="{{ url_for('aggregator.show') }}" class="btn btn-primary btn-sm">Configure</a>
+    </div>
+
+    <div class="card" style="text-align: center;">
+        {% if monitor_running %}
+            <div style="font-size: 1.5em; font-weight: bold; color: var(--success);">Running</div>
+            <div style="display: flex; align-items: center; justify-content: center; gap: 8px; color: var(--text-muted); margin-bottom: 15px;">
+                <span class="pulse-dot"></span>
+                Monitor Active
+            </div>
+        {% else %}
+            <div style="font-size: 1.5em; font-weight: bold; color: var(--warning);">Stopped</div>
+            <div style="color: var(--text-muted); margin-bottom: 15px;">Monitor Status</div>
+        {% endif %}
+        <a href="{{ url_for('monitors.index') }}" class="btn {% if monitor_running %}btn-primary{% else %}btn-success{% endif %} btn-sm">
+            {% if monitor_running %}View Logs{% else %}Start{% endif %}
+        </a>
+    </div>
+</div>
+
+<div class="card">
+    <h2>Quick Start</h2>
+    <ol style="line-height: 2; padding-left: 20px;">
+        <li>
+            <strong>Add an account</strong> - Configure your Telegram API credentials
+            {% if accounts_count == 0 %}
+                <a href="{{ url_for('accounts.add_account') }}" class="btn btn-success btn-sm" style="margin-left: 10px;">Add Account</a>
+            {% else %}
+                <span class="badge badge-success" style="margin-left: 10px;">Done</span>
+            {% endif %}
+        </li>
+        <li>
+            <strong>Login to account</strong> - Authorize with your phone number
+            {% if accounts_count > 0 %}
+                <a href="{{ url_for('accounts.list_accounts') }}" class="btn btn-primary btn-sm" style="margin-left: 10px;">View Accounts</a>
+            {% endif %}
+        </li>
+        <li>
+            <strong>Set aggregator</strong> - Choose where to forward mentions
+            {% if aggregator %}
+                <span class="badge badge-success" style="margin-left: 10px;">Done</span>
+            {% elif accounts_count > 0 %}
+                <a href="{{ url_for('aggregator.show') }}" class="btn btn-success btn-sm" style="margin-left: 10px;">Configure</a>
+            {% endif %}
+        </li>
+        <li>
+            <strong>Add watches</strong> - Select chats to monitor
+            {% if watches_count > 0 %}
+                <span class="badge badge-success" style="margin-left: 10px;">{{ watches_count }} configured</span>
+            {% elif accounts_count > 0 %}
+                <a href="{{ url_for('watches.add_watch') }}" class="btn btn-success btn-sm" style="margin-left: 10px;">Add Watch</a>
+            {% endif %}
+        </li>
+        <li>
+            <strong>Start monitoring</strong> - Begin watching for mentions
+            {% if monitor_running %}
+                <span class="badge badge-success" style="margin-left: 10px;">Active</span>
+            {% elif accounts_count > 0 and aggregator and watches_count > 0 %}
+                <a href="{{ url_for('monitors.index') }}" class="btn btn-success btn-sm" style="margin-left: 10px;">Start</a>
+            {% endif %}
+        </li>
+    </ol>
+</div>
+
+{% endif %}
+
+<style>
+.pulse-dot {
+    width: 10px;
+    height: 10px;
+    background-color: var(--success);
+    border-radius: 50%;
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 0.5;
+        transform: scale(1.2);
+    }
+}
+</style>
+{% endblock %}

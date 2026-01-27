@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+
+{% block title %}Edit Watch #{{ watch.id }} - tgmon{% endblock %}
+
+{% block content %}
+<h1>Edit Watch #{{ watch.id }}</h1>
+
+<div class="card">
+    <form method="POST">
+        <div class="form-group">
+            <label>Account</label>
+            <input type="text" value="{{ watch.account_name }}" disabled style="opacity: 0.6;">
+            <small style="color: var(--text-muted);">Account cannot be changed. Delete and create a new watch to change account.</small>
+        </div>
+
+        <div class="form-group">
+            <label for="chat_ref">Chat Reference</label>
+            <input type="text" id="chat_ref" name="chat_ref" required
+                   placeholder="@username or chat_id" value="{{ watch.chat_ref }}">
+            <small style="color: var(--text-muted);">Enter a @username or numeric chat ID.</small>
+        </div>
+
+        {% if watch.chat_title or watch.chat_id %}
+        <div class="form-group">
+            <label>Resolved Chat</label>
+            <input type="text" value="{% if watch.chat_title %}{{ watch.chat_title }} (ID: {{ watch.chat_id }}){% else %}ID: {{ watch.chat_id }}{% endif %}" disabled style="opacity: 0.6;">
+            <small style="color: var(--text-muted);">This will be cleared when you update the chat reference and re-resolved on next monitor start.</small>
+        </div>
+        {% endif %}
+
+        <div style="display: flex; gap: 10px;">
+            <button type="submit" class="btn btn-success">Save Changes</button>
+            <a href="{{ url_for('watches.list_watches') }}" class="btn btn-primary">Cancel</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

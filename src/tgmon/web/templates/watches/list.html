@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+
+{% block title %}Watches - tgmon{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+    <h1>Watches</h1>
+    <a href="{{ url_for('watches.add_watch') }}" class="btn btn-success">Add Watch</a>
+</div>
+
+{% if accounts_watches %}
+    {% for account_name, watches in accounts_watches.items() %}
+        <div class="card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                <h2 style="margin: 0; border: none; padding: 0;">{{ account_name }}</h2>
+                {% if watches %}
+                <div style="display: flex; gap: 5px;">
+                    <form action="{{ url_for('watches.enable_all', account_name=account_name) }}" method="POST" class="inline-form">
+                        <button type="submit" class="btn btn-success btn-sm">Enable All</button>
+                    </form>
+                    <form action="{{ url_for('watches.disable_all', account_name=account_name) }}" method="POST" class="inline-form">
+                        <button type="submit" class="btn btn-warning btn-sm">Disable All</button>
+                    </form>
+                </div>
+                {% endif %}
+            </div>
+            {% if watches %}
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Chat</th>
+                            <th>Reference</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for watch in watches %}
+                        <tr>
+                            <td>#{{ watch.id }}</td>
+                            <td>
+                                {% if watch.chat_title %}
+                                    <strong>{{ watch.chat_title }}</strong>
+                                    <br><small style="color: var(--text-muted);">ID: {{ watch.chat_id }}</small>
+                                {% else %}
+                                    <span style="color: var(--text-muted);">Not resolved</span>
+                                {% endif %}
+                            </td>
+                            <td style="word-break: break-all;">{{ watch.chat_ref }}</td>
+                            <td>
+                                {% if watch.enabled %}
+                                    <span class="badge badge-success">Enabled</span>
+                                {% else %}
+                                    <span class="badge badge-warning">Disabled</span>
+                                {% endif %}
+                            </td>
+                            <td class="actions">
+                                <a href="{{ url_for('watches.edit', watch_id=watch.id) }}" class="btn btn-primary btn-sm">Edit</a>
+                                {% if watch.enabled %}
+                                    <form action="{{ url_for('watches.disable', watch_id=watch.id) }}" method="POST" class="inline-form">
+                                        <button type="submit" class="btn btn-warning btn-sm">Disable</button>
+                                    </form>
+                                {% else %}
+                                    <form action="{{ url_for('watches.enable', watch_id=watch.id) }}" method="POST" class="inline-form">
+                                        <button type="submit" class="btn btn-success btn-sm">Enable</button>
+                                    </form>
+                                {% endif %}
+                                <form action="{{ url_for('watches.delete', watch_id=watch.id) }}" method="POST" class="inline-form" onsubmit="return confirm('Delete watch #{{ watch.id }}?');">
+                                    <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            {% else %}
+                <div class="empty-state">
+                    <p>No watches for this account.</p>
+                </div>
+            {% endif %}
+        </div>
+    {% endfor %}
+{% else %}
+    <div class="card">
+        <div class="empty-state">
+            <p>No accounts configured. Add an account first.</p>
+            <br>
+            <a href="{{ url_for('accounts.add_account') }}" class="btn btn-success">Add Account</a>
+        </div>
+    </div>
+{% endif %}
+{% endblock %}

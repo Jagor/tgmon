@@ -89,8 +89,10 @@ def list_watches(
 
     for w in watches:
         status = "enabled" if w.enabled else "disabled"
-        chat_id_str = f" (ID: {w.chat_id})" if w.chat_id else ""
-        typer.echo(f"  #{w.id}: {w.chat_ref}{chat_id_str} [{status}]")
+        if w.chat_id:
+            typer.echo(f"  #{w.id}: {w.chat_ref} ({w.chat_id}) [{status}]")
+        else:
+            typer.echo(f"  #{w.id}: {w.chat_ref} [{status}]")
 
 
 @app.command("enable")

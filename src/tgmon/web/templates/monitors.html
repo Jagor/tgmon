@@ -1,0 +1,206 @@
+{% extends "base.html" %}
+
+{% block title %}Monitors - tgmon{% endblock %}
+
+{% block content %}
+<h1>Monitor Control</h1>
+
+<div class="card">
+    <h2>Status</h2>
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin-bottom: 20px;">
+        <div style="text-align: center; padding: 15px; background: var(--bg-color); border-radius: 4px;">
+            <div style="font-size: 2em; font-weight: bold; color: var(--accent);">{{ enabled_accounts }}</div>
+            <div style="color: var(--text-muted);">Enabled Accounts</div>
+        </div>
+        <div style="text-align: center; padding: 15px; background: var(--bg-color); border-radius: 4px;">
+            <div style="font-size: 2em; font-weight: bold; color: var(--accent);">{{ total_watches }}</div>
+            <div style="color: var(--text-muted);">Active Watches</div>
+        </div>
+        <div style="text-align: center; padding: 15px; background: var(--bg-color); border-radius: 4px;">
+            {% if aggregator %}
+                <div style="font-size: 1.1em; font-weight: bold; color: var(--success); word-break: break-all;">
+                    {% if aggregator.chat_title %}{{ aggregator.chat_title }}{% else %}{{ aggregator.chat_ref }}{% endif %}
+                </div>
+            {% else %}
+                <div style="font-size: 1.2em; font-weight: bold; color: var(--warning);">Not Set</div>
+            {% endif %}
+            <div style="color: var(--text-muted);">Aggregator</div>
+        </div>
+        <div style="text-align: center; padding: 15px; background: var(--bg-color); border-radius: 4px;">
+            <div id="status-badge-container">
+                <span id="status-badge" class="badge {% if is_running %}badge-success{% else %}badge-warning{% endif %}" style="font-size: 1.2em;">
+                    {% if is_running %}Running{% else %}Stopped{% endif %}
+                </span>
+            </div>
+            <div style="color: var(--text-muted); margin-top: 5px;">Monitor Status</div>
+        </div>
+    </div>
+
+    {% if not ready and not is_running %}
+    <div style="background: rgba(233, 69, 96, 0.2); border: 1px solid var(--accent); padding: 15px; border-radius: 4px; margin-bottom: 20px;">
+        <strong>Cannot start monitoring:</strong>
+        <ul style="margin: 10px 0 0 20px;">
+            {% if enabled_accounts == 0 %}
+                <li>No enabled accounts. <a href="{{ url_for('accounts.list_accounts') }}" style="color: var(--accent);">Enable an account</a></li>
+            {% endif %}
+            {% if total_watches == 0 %}
+                <li>No active watches. <a href="{{ url_for('watches.add_watch') }}" style="color: var(--accent);">Add a watch</a></li>
+            {% endif %}
+            {% if not aggregator %}
+                <li>Aggregator not configured. <a href="{{ url_for('aggregator.show') }}" style="color: var(--accent);">Configure aggregator</a></li>
+            {% endif %}
+        </ul>
+    </div>
+    {% endif %}
+
+    <div style="display: flex; gap: 10px;">
+        <button id="start-btn" class="btn btn-success" onclick="startMonitor()" {% if is_running or not ready %}disabled{% endif %}>
+            Start Monitors
+        </button>
+        <button id="stop-btn" class="btn btn-danger" onclick="stopMonitor()" {% if not is_running %}disabled{% endif %}>
+            Stop Monitors
+        </button>
+        <button class="btn btn-primary" onclick="refreshStatus()">Refresh Status</button>
+    </div>
+</div>
+
+<div class="card">
+    <h2>Real-time Logs</h2>
+    <div id="log-container" style="
+        background-color: #0d1117;
+        border-radius: 4px;
+        padding: 15px;
+        height: 400px;
+        overflow-y: auto;
+        font-family: 'Consolas', 'Monaco', monospace;
+        font-size: 13px;
+        line-height: 1.5;
+    ">
+        <div id="logs"></div>
+    </div>
+    <br>
+    <div style="display: flex; gap: 10px;">
+        <button class="btn btn-primary" onclick="clearLogs()">Clear Logs</button>
+        <label style="display: flex; align-items: center; gap: 5px;">
+            <input type="checkbox" id="auto-scroll" checked>
+            Auto-scroll
+        </label>
+    </div>
+</div>
+
+<script>
+    let eventSource = null;
+
+    let isReady = {{ 'true' if ready else 'false' }};
+
+    function updateUI(running, ready) {
+        if (ready !== undefined) {
+            isReady = ready;
+        }
+        document.getElementById('start-btn').disabled = running || !isReady;
+        document.getElementById('stop-btn').disabled = !running;
+        const badge = document.getElementById('status-badge');
+        badge.textContent = running ? 'Running' : 'Stopped';
+        badge.className = 'badge ' + (running ? 'badge-success' : 'badge-warning');
+    }
+
+    async function startMonitor() {
+        try {
+            const response = await fetch('/monitors/start', { method: 'POST' });
+            const data = await response.json();
+            if (response.ok) {
+                updateUI(true, isReady);
+                connectSSE();
+            } else {
+                addLog('Error: ' + data.status);
+            }
+        } catch (e) {
+            addLog('Error: ' + e.message);
+        }
+    }
+
+    async function stopMonitor() {
+        try {
+            const response = await fetch('/monitors/stop', { method: 'POST' });
+            const data = await response.json();
+            if (response.ok) {
+                updateUI(false, isReady);
+                if (eventSource) {
+                    eventSource.close();
+                    eventSource = null;
+                }
+            } else {
+                addLog('Error: ' + data.status);
+            }
+        } catch (e) {
+            addLog('Error: ' + e.message);
+        }
+    }
+
+    async function refreshStatus() {
+        try {
+            const response = await fetch('/monitors/status');
+            const data = await response.json();
+            updateUI(data.running, data.ready);
+            if (data.running && !eventSource) {
+                connectSSE();
+            }
+        } catch (e) {
+            addLog('Error: ' + e.message);
+        }
+    }
+
+    function addLog(message) {
+        if (!message) return;
+        const logs = document.getElementById('logs');
+        const line = document.createElement('div');
+        line.textContent = message;
+        line.style.color = '#c9d1d9';
+        logs.appendChild(line);
+
+        if (document.getElementById('auto-scroll').checked) {
+            const container = document.getElementById('log-container');
+            container.scrollTop = container.scrollHeight;
+        }
+    }
+
+    function clearLogs() {
+        document.getElementById('logs').innerHTML = '';
+    }
+
+    function connectSSE() {
+        if (eventSource) {
+            eventSource.close();
+        }
+
+        eventSource = new EventSource('/monitors/logs');
+
+        eventSource.addEventListener('log', function(e) {
+            addLog(e.data);
+        });
+
+        eventSource.addEventListener('ping', function(e) {
+            // Keep-alive, do nothing
+        });
+
+        eventSource.onerror = function(e) {
+            if (eventSource.readyState === EventSource.CLOSED) {
+                addLog('Connection closed');
+                eventSource = null;
+            }
+        };
+    }
+
+    // Auto-connect if running
+    {% if is_running %}
+    connectSSE();
+    {% endif %}
+
+    // Cleanup on page unload
+    window.addEventListener('beforeunload', function() {
+        if (eventSource) {
+            eventSource.close();
+        }
+    });
+</script>
+{% endblock %}

@@ -41,13 +41,14 @@ def require_init() -> None:
 
 
 # Import and register subcommands
-from . import account, aggregator, watch, run
+from . import account, aggregator, watch, run, web
 
 app.add_typer(account.app, name="account", help="Manage Telegram accounts")
 app.add_typer(aggregator.app, name="aggregator", help="Configure aggregator chat")
 app.add_typer(watch.app, name="watch", help="Manage watched chats")
 app.command(name="run")(run.run_account)
 app.command(name="run-all")(run.run_all)
+app.command(name="web")(web.web)
 
 
 if __name__ == "__main__":

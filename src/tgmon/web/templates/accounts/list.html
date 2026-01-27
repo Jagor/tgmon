@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+
+{% block title %}Accounts - tgmon{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+    <h1>Accounts</h1>
+    <a href="{{ url_for('accounts.add_account') }}" class="btn btn-success">Add Account</a>
+</div>
+
+<div class="card">
+    {% if accounts %}
+        <table>
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>API ID</th>
+                    <th>Phone</th>
+                    <th>Status</th>
+                    <th>Authorized</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for account in accounts %}
+                <tr>
+                    <td>{{ account.name }}</td>
+                    <td>{{ account.api_id }}</td>
+                    <td>{{ account.phone or '-' }}</td>
+                    <td>
+                        {% if account.enabled %}
+                            <span class="badge badge-success">Enabled</span>
+                        {% else %}
+                            <span class="badge badge-warning">Disabled</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% set auth = auth_status.get(account.name) %}
+                        {% if auth is none %}
+                            <span class="badge badge-warning">Unknown</span>
+                        {% elif auth %}
+                            <span class="badge badge-success">Yes</span>
+                        {% else %}
+                            <span class="badge badge-danger">No</span>
+                        {% endif %}
+                    </td>
+                    <td class="actions">
+                        <a href="{{ url_for('accounts.login', name=account.name) }}" class="btn btn-primary btn-sm">Login</a>
+                        {% if account.enabled %}
+                            <form action="{{ url_for('accounts.disable', name=account.name) }}" method="POST" class="inline-form">
+                                <button type="submit" class="btn btn-warning btn-sm">Disable</button>
+                            </form>
+                        {% else %}
+                            <form action="{{ url_for('accounts.enable', name=account.name) }}" method="POST" class="inline-form">
+                                <button type="submit" class="btn btn-success btn-sm">Enable</button>
+                            </form>
+                        {% endif %}
+                        <form action="{{ url_for('accounts.delete', name=account.name) }}" method="POST" class="inline-form" onsubmit="return confirm('Delete account {{ account.name }}?');">
+                            <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <div class="empty-state">
+            <p>No accounts configured.</p>
+            <br>
+            <a href="{{ url_for('accounts.add_account') }}" class="btn btn-success">Add your first account</a>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

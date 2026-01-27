@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+
+{% block title %}Login - {{ account.name }} - tgmon{% endblock %}
+
+{% block content %}
+<h1>Login: {{ account.name }}</h1>
+
+<div class="card">
+    {% if state.step == 'phone' %}
+        <h2>Step 1: Enter Phone Number</h2>
+        <form method="POST">
+            <input type="hidden" name="action" value="send_code">
+            <div class="form-group">
+                <label for="phone">Phone Number</label>
+                <input type="text" id="phone" name="phone" required placeholder="+1234567890" value="{{ account.phone or '' }}">
+                <small style="color: var(--text-muted);">Include country code (e.g., +1 for US)</small>
+            </div>
+            <div style="display: flex; gap: 10px;">
+                <button type="submit" class="btn btn-success">Send Code</button>
+                <a href="{{ url_for('accounts.list_accounts') }}" class="btn btn-primary">Cancel</a>
+            </div>
+        </form>
+
+    {% elif state.step == 'code' %}
+        <h2>Step 2: Enter Verification Code</h2>
+        <p style="color: var(--text-muted); margin-bottom: 15px;">A code has been sent to {{ state.phone }}</p>
+        <form method="POST">
+            <input type="hidden" name="action" value="verify_code">
+            <div class="form-group">
+                <label for="code">Verification Code</label>
+                <input type="text" id="code" name="code" required placeholder="12345" autocomplete="off">
+            </div>
+            <div style="display: flex; gap: 10px;">
+                <button type="submit" class="btn btn-success">Verify Code</button>
+                <a href="{{ url_for('accounts.list_accounts') }}" class="btn btn-primary">Cancel</a>
+            </div>
+        </form>
+
+    {% elif state.step == '2fa' %}
+        <h2>Step 3: Two-Factor Authentication</h2>
+        <p style="color: var(--text-muted); margin-bottom: 15px;">Enter your 2FA password</p>
+        <form method="POST">
+            <input type="hidden" name="action" value="verify_2fa">
+            <div class="form-group">
+                <label for="password">2FA Password</label>
+                <input type="password" id="password" name="password" required>
+            </div>
+            <div style="display: flex; gap: 10px;">
+                <button type="submit" class="btn btn-success">Verify Password</button>
+                <a href="{{ url_for('accounts.list_accounts') }}" class="btn btn-primary">Cancel</a>
+            </div>
+        </form>
+    {% endif %}
+</div>
+{% endblock %}

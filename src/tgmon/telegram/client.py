@@ -35,13 +35,14 @@ class TelegramClient:
         """Check if client is authorized."""
         return await self._client.is_user_authorized()
 
-    async def send_code(self, phone: str) -> None:
-        """Send authorization code."""
-        await self._client.send_code_request(phone)
+    async def send_code(self, phone: str) -> str:
+        """Send authorization code. Returns phone_code_hash."""
+        result = await self._client.send_code_request(phone)
+        return result.phone_code_hash
 
-    async def sign_in(self, phone: str, code: str) -> None:
+    async def sign_in(self, phone: str, code: str, phone_code_hash: str) -> None:
         """Sign in with code."""
-        await self._client.sign_in(phone, code)
+        await self._client.sign_in(phone, code, phone_code_hash=phone_code_hash)
 
     async def sign_in_password(self, password: str) -> None:
         """Sign in with 2FA password."""
