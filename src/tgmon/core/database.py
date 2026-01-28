@@ -85,19 +85,27 @@ class Database:
         if not self._conn:
             return
 
-        # Add chat_title column to watches if it doesn't exist
-        cursor = await self._conn.execute("PRAGMA table_info(watches)")
-        columns = [row[1] for row in await cursor.fetchall()]
-        if "chat_title" not in columns:
-            await self._conn.execute("ALTER TABLE watches ADD COLUMN chat_title TEXT")
+        # Check if tables exist first
+        cursor = await self._conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('watches', 'aggregator')"
+        )
+        existing_tables = {row[0] for row in await cursor.fetchall()}
 
-        # Add chat_id and chat_title columns to aggregator if they don't exist
-        cursor = await self._conn.execute("PRAGMA table_info(aggregator)")
-        columns = [row[1] for row in await cursor.fetchall()]
-        if "chat_id" not in columns:
-            await self._conn.execute("ALTER TABLE aggregator ADD COLUMN chat_id INTEGER")
-        if "chat_title" not in columns:
-            await self._conn.execute("ALTER TABLE aggregator ADD COLUMN chat_title TEXT")
+        # Add chat_title column to watches if table exists and column doesn't
+        if "watches" in existing_tables:
+            cursor = await self._conn.execute("PRAGMA table_info(watches)")
+            columns = [row[1] for row in await cursor.fetchall()]
+            if "chat_title" not in columns:
+                await self._conn.execute("ALTER TABLE watches ADD COLUMN chat_title TEXT")
+
+        # Add chat_id and chat_title columns to aggregator if table exists and columns don't
+        if "aggregator" in existing_tables:
+            cursor = await self._conn.execute("PRAGMA table_info(aggregator)")
+            columns = [row[1] for row in await cursor.fetchall()]
+            if "chat_id" not in columns:
+                await self._conn.execute("ALTER TABLE aggregator ADD COLUMN chat_id INTEGER")
+            if "chat_title" not in columns:
+                await self._conn.execute("ALTER TABLE aggregator ADD COLUMN chat_title TEXT")
 
         await self._conn.commit()
 
